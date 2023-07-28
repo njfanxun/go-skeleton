@@ -1,0 +1,80 @@
+package config
+
+import (
+    "os"
+    "path/filepath"
+    "regexp"
+    "strings"
+
+    "{{ .ModulePath}}/pkg/util"
+
+    "github.com/mitchellh/mapstructure"
+    "github.com/pkg/errors"
+    "github.com/spf13/viper"
+)
+
+type IConfig interface {
+    Validate() []error
+}
+
+type GlobalConfig struct {
+{{- if (index .Modules "gin")}}
+    Port              int                `json:"port,omitempty" yaml:"port,omitempty"`
+{{- end}}
+{{- if (index .Modules "gorm")}}
+    DBConfig       *DBConfig       `json:"db" yaml:"db"`
+{{- end}}
+}
+
+func (g *GlobalConfig) Validate() []error {
+    var errs = make([]error, 0)
+{{- if (index .Modules "gin")}}
+    if err := util.IsValidPort(g.Port); err != nil {
+        errs = append(errs, err)
+    }
+{{- end}}
+{{- if (index .Modules "gorm")}}
+    if es := g.DBConfig.Validate(); len(es) > 0 {
+        errs = append(errs, es...)
+    }
+{{- end}}
+    return errs
+}
+
+func NewDefaultGlobalConfig() *GlobalConfig {
+    return &GlobalConfig{
+{{- if (index .Modules "gin")}}
+        Port:              3000,
+{{- end}}
+{{- if (index .Modules "gorm")}}
+        DBConfig:       NewDefaultDBConfig(),
+{{- end}}
+    }
+}
+func TryLoadFromDisk(configFilePath string) (*GlobalConfig, error) {
+    _, err := os.Stat(configFilePath)
+    if err != nil {
+        return nil, err
+    }
+    dir, file := filepath.Split(configFilePath)
+    fileType := filepath.Ext(file)
+    viper.AddConfigPath(dir)
+    viper.SetConfigName(strings.TrimSuffix(file, fileType))
+    viper.SetConfigType(strings.TrimPrefix(fileType, "."))
+    viper.AutomaticEnv()
+    viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+    if err := viper.ReadInConfig(); err != nil {
+        if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+            return nil, err
+        } else {
+            return nil, errors.Wrap(err, "解析配置文件错误")
+        }
+    }
+    cfg := NewDefaultGlobalConfig()
+    if err := viper.Unmarshal(cfg, func(config *mapstructure.DecoderConfig) {
+        config.TagName = strings.TrimPrefix(fileType, ".")
+    }); err != nil {
+        return nil, err
+    }
+    return cfg, nil
+}
