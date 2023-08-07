@@ -18,7 +18,7 @@ import (
 func NewRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
-		Use:   "gosk",
+		Use:   "go-skeleton",
 		Short: "go项目骨架生成器",
 		Run: func(cmd *cobra.Command, args []string) {
 			run()
